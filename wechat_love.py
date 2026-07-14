@@ -59,8 +59,7 @@ def get_birthday_left():
 # 高阶业务逻辑计算引擎
 # ==========================================
 def get_dynamic_holiday_str(today, birthday_left, love_days):
-    """基于向量距离排序的下一节日测算算法 (已移除 Python 端前缀标签)"""
-    # 1. 优先命中拦截
+    """基于向量距离排序的下一节日测算算法"""
     if birthday_left == 0:
         return "今天是小胡胡的农历生日！🎂"
     if love_days > 0 and love_days % 365 == 0:
@@ -70,11 +69,9 @@ def get_dynamic_holiday_str(today, birthday_left, love_days):
     if date_key in HOLIDAY_MESSAGES:
         return f"今天是{HOLIDAY_MESSAGES[date_key]}快乐！❤️"
         
-    # 2. 全局下一节点测算
     candidates = {}
     candidates["农历生日"] = birthday_left
     
-    # 周年纪念日边界判定
     try:
         anni_this_year = date(today.year, LOVE_DATE.month, LOVE_DATE.day)
     except ValueError:
@@ -85,7 +82,6 @@ def get_dynamic_holiday_str(today, birthday_left, love_days):
     else:
         candidates["恋爱纪念日"] = (date(today.year + 1, LOVE_DATE.month, LOVE_DATE.day) - today).days
         
-    # 公历库边界判定
     for m_d, name in HOLIDAY_MESSAGES.items():
         m, d = map(int, m_d.split("-"))
         try:
@@ -98,9 +94,8 @@ def get_dynamic_holiday_str(today, birthday_left, love_days):
         else:
             candidates[name] = (date(today.year + 1, m, d) - today).days
             
-    # 执行极小值求取
     next_name, next_days = min(candidates.items(), key=lambda x: x[1])
-    return f"距离【{next_name}】还有 {next_days} 天 ⏳"
+    return f"下个节日【{next_name}】还有 {next_days} 天 ⏳"
 
 def get_segmented_weather_tips(weather_info):
     """提取天气提示片段，通过内联 \n 在运行时撑开微信客户端排版边界"""
@@ -127,7 +122,6 @@ def get_segmented_weather_tips(weather_info):
     except Exception:
         pass
         
-    # 注入运行时换行转义
     tip1 = lines[0] + "\n" if len(lines) > 0 else ""
     tip2 = lines[1] + "\n" if len(lines) > 1 else ""
     tip3 = lines[2] if len(lines) > 2 else ""
@@ -153,11 +147,14 @@ def get_weather():
     return {"weather": "多云", "low": "20℃", "high": "25℃"}
 
 def get_caihongpi():
+    """获取天行数据的彩虹屁，并进行脱敏与占位符清洗"""
     try:
         url = f"https://apis.tianapi.com/caihongpi/index?key={TIANAPI_KEY}"
         res = requests.get(url, timeout=10).json()
         if res.get("code") == 200:
-            return res["result"]["content"]
+            content = res["result"]["content"]
+            # 过滤清洗 API 附带的泛用型变量符
+            return content.replace("XXX", "小胡胡")
     except Exception:
         pass
     return "今天也超级喜欢你！"
@@ -192,16 +189,19 @@ def send_message():
         "touser": OPEN_ID,
         "template_id": TEMPLATE_ID,
         "data": {
-            "d": {"value": today_str, "color": "#000000"},
-            "c": {"value": CITY_NAME, "color": "#000000"},
-            "w": {"value": weather["weather"], "color": "#000000"},
-            "t": {"value": temp_str, "color": "#000000"},
+            "d": {"value": today_str, "color": "#173177"},
+            "c": {"value": CITY_NAME, "color": "#173177"},
+            "w": {"value": weather["weather"], "color": "#173177"},
+            # 第一处视觉隔离：注入 \n 将基础信息区与纪念日区块拉开
+            "t": {"value": f"{temp_str}\n", "color": "#FF0000"},
             "ld": {"value": str(love_days), "color": "#FF69B4"},
             "bl": {"value": str(birthday_left), "color": "#FF69B4"},
-            "h": {"value": holiday_str, "color": "#FF8C00"},
-            "t1": {"value": tip1, "color": "#333333"},
-            "t2": {"value": tip2, "color": "#333333"},
-            "t3": {"value": tip3, "color": "#333333"},
+            # 第二处视觉隔离：注入 \n 将纪念日区与专属提醒区块拉开
+            "h": {"value": f"{holiday_str}\n", "color": "#FF8C00"},
+            "t1": {"value": tip1, "color": "#008000"},
+            "t2": {"value": tip2, "color": "#008000"},
+            # 第三处视觉隔离：注入 \n 将提醒区块与情话区块拉开
+            "t3": {"value": f"{tip3}\n", "color": "#008000"},
             "q1": {"value": q1, "color": "#FF1493"},
             "q2": {"value": q2, "color": "#FF1493"},
             "q3": {"value": q3, "color": "#FF1493"},
