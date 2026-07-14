@@ -59,24 +59,22 @@ def get_birthday_left():
 # 高阶业务逻辑计算引擎
 # ==========================================
 def get_dynamic_holiday_str(today, birthday_left, love_days):
-    """基于向量距离排序的下一节日测算算法"""
-    # 1. 第一优先级：命中当日节日
+    """基于向量距离排序的下一节日测算算法 (已移除 Python 端前缀标签)"""
+    # 1. 优先命中拦截
     if birthday_left == 0:
-        return "🎈 今日节日：小胡胡的农历生日！🎂"
+        return "今天是小胡胡的农历生日！🎂"
     if love_days > 0 and love_days % 365 == 0:
-        return f"🎈 今日节日：恋爱 {love_days // 365} 周年纪念日！❤️"
+        return f"今天是恋爱 {love_days // 365} 周年纪念日！❤️"
     
     date_key = today.strftime("%m-%d")
     if date_key in HOLIDAY_MESSAGES:
-        return f"🎈 今日节日：{HOLIDAY_MESSAGES[date_key]}快乐！❤️"
+        return f"今天是{HOLIDAY_MESSAGES[date_key]}快乐！❤️"
         
-    # 2. 第二优先级：全部未命中时，启动全局下一节点测算
+    # 2. 全局下一节点测算
     candidates = {}
+    candidates["农历生日"] = birthday_left
     
-    # 压入农历生日
-    candidates["小胡胡的农历生日"] = birthday_left
-    
-    # 压入恋爱周年纪念
+    # 周年纪念日边界判定
     try:
         anni_this_year = date(today.year, LOVE_DATE.month, LOVE_DATE.day)
     except ValueError:
@@ -87,7 +85,7 @@ def get_dynamic_holiday_str(today, birthday_left, love_days):
     else:
         candidates["恋爱纪念日"] = (date(today.year + 1, LOVE_DATE.month, LOVE_DATE.day) - today).days
         
-    # 压入静态公历库
+    # 公历库边界判定
     for m_d, name in HOLIDAY_MESSAGES.items():
         m, d = map(int, m_d.split("-"))
         try:
@@ -100,27 +98,22 @@ def get_dynamic_holiday_str(today, birthday_left, love_days):
         else:
             candidates[name] = (date(today.year + 1, m, d) - today).days
             
-    # 执行排序取优
+    # 执行极小值求取
     next_name, next_days = min(candidates.items(), key=lambda x: x[1])
-    return f"⏳ 下个节日：距离【{next_name}】还有 {next_days} 天"
+    return f"距离【{next_name}】还有 {next_days} 天 ⏳"
 
 def get_segmented_weather_tips(weather_info):
-    """
-    通过 Python 内联换行符实现多变量单行渲染机制。
-    返回 3 个片段，前两个片段自带 \n 实现强换行，规避微信 20 字截断。
-    """
+    """提取天气提示片段，通过内联 \n 在运行时撑开微信客户端排版边界"""
     weather_str = weather_info.get("weather", "")
     low_str = weather_info.get("low", "")
     high_str = weather_info.get("high", "")
     
-    # 预设常规阵列
     lines = ["今天天气不错哦，", "希望你这一天，", "都有好心情相伴 ❤️"]
     
     try:
         clean_low = float(low_str.replace("℃", "").replace("°C", "").strip())
         clean_high = float(high_str.replace("℃", "").replace("°C", "").strip())
         
-        # 精确极值映射
         if clean_high >= 35.0:
             lines = ["今天杭州比较热，", "记得多喝点水，", "空调也不要吹太久哦 ❤️"]
         elif clean_high >= 30.0:
@@ -134,7 +127,7 @@ def get_segmented_weather_tips(weather_info):
     except Exception:
         pass
         
-    # Python 层级强行注入换行转义字符
+    # 注入运行时换行转义
     tip1 = lines[0] + "\n" if len(lines) > 0 else ""
     tip2 = lines[1] + "\n" if len(lines) > 1 else ""
     tip3 = lines[2] if len(lines) > 2 else ""
@@ -188,30 +181,30 @@ def send_message():
     holiday_str = get_dynamic_holiday_str(today, birthday_left, love_days)
     tip1, tip2, tip3 = get_segmented_weather_tips(weather)
 
-    # 规避微信 20 字符截断的情话切片 (保持无缝衔接，无需注入换行)
     q1 = caihongpi[:18]
     q2 = caihongpi[18:36]
     q3 = caihongpi[36:54]
+    
+    temp_str = f"{weather['low']} ~ {weather['high']}"
 
     url = f"https://api.weixin.qq.com/cgi-bin/message/template/send?access_token={access_token}"
     data = {
         "touser": OPEN_ID,
         "template_id": TEMPLATE_ID,
         "data": {
-            "riqi": {"value": today_str, "color": "#000000"},
-            "city": {"value": CITY_NAME, "color": "#000000"},
-            "weather": {"value": weather["weather"], "color": "#000000"},
-            "low": {"value": weather["low"], "color": "#000000"},
-            "high": {"value": weather["high"], "color": "#000000"},
-            "love_days": {"value": str(love_days), "color": "#FF69B4"},
-            "birthday_left": {"value": str(birthday_left), "color": "#FF69B4"},
-            "holiday": {"value": holiday_str, "color": "#FF8C00"}, # 动态标签嵌入内部
-            "tip1": {"value": tip1, "color": "#333333"},
-            "tip2": {"value": tip2, "color": "#333333"},
-            "tip3": {"value": tip3, "color": "#333333"},
-            "qinghua1": {"value": q1, "color": "#FF1493"},
-            "qinghua2": {"value": q2, "color": "#FF1493"},
-            "qinghua3": {"value": q3, "color": "#FF1493"},
+            "d": {"value": today_str, "color": "#000000"},
+            "c": {"value": CITY_NAME, "color": "#000000"},
+            "w": {"value": weather["weather"], "color": "#000000"},
+            "t": {"value": temp_str, "color": "#000000"},
+            "ld": {"value": str(love_days), "color": "#FF69B4"},
+            "bl": {"value": str(birthday_left), "color": "#FF69B4"},
+            "h": {"value": holiday_str, "color": "#FF8C00"},
+            "t1": {"value": tip1, "color": "#333333"},
+            "t2": {"value": tip2, "color": "#333333"},
+            "t3": {"value": tip3, "color": "#333333"},
+            "q1": {"value": q1, "color": "#FF1493"},
+            "q2": {"value": q2, "color": "#FF1493"},
+            "q3": {"value": q3, "color": "#FF1493"},
         }
     }
 
@@ -219,7 +212,7 @@ def send_message():
     if res.get("errcode") == 0:
         print("✅ 消息推送与渲染数据下发成功")
         return True
-    print(f"❌ 微信网关截断: {res}")
+    print(f"❌ 微信网关返回错误: {res}")
     return False
 
 if __name__ == "__main__":
