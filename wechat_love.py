@@ -257,16 +257,19 @@ def send_message():
     
     temp_str = f"{weather['low']} ~ {weather['high']}"
     
-    # 构建随机寄语节点
+    # 构建随机寄语节点并执行强行切片，规避顶层截断机制
     random_greeting = random.choice(DAILY_GREETINGS)
-    top_str = f"早安，我最爱的宝宝！{random_greeting}\n"
+    full_top_str = f"早安，我最爱的宝宝！{random_greeting}"
+    top1 = full_top_str[:18]
+    top2 = full_top_str[18:36]
 
     url = f"https://api.weixin.qq.com/cgi-bin/message/template/send?access_token={access_token}"
     data = {
         "touser": OPEN_ID,
         "template_id": TEMPLATE_ID,
         "data": {
-            "top": {"value": top_str, "color": "#FF69B4"},
+            "top1": {"value": top1, "color": "#FF69B4"},
+            "top2": {"value": f"{top2}\n", "color": "#FF69B4"},
             "d": {"value": today_str, "color": "#173177"},
             "c": {"value": CITY_NAME, "color": "#173177"},
             "w": {"value": weather["weather"], "color": "#173177"},
