@@ -254,6 +254,7 @@ def send_message():
     q1 = caihongpi[:18]
     q2 = caihongpi[18:36]
     q3 = caihongpi[36:54]
+    q4 = caihongpi[54:72]
     
     temp_str = f"{weather['low']} ~ {weather['high']}"
     
@@ -283,6 +284,7 @@ def send_message():
             "q1": {"value": q1, "color": "#FF1493"},
             "q2": {"value": q2, "color": "#FF1493"},
             "q3": {"value": q3, "color": "#FF1493"},
+            "q4": {"value": q4, "color": "#FF1493"},
         }
     }
 
