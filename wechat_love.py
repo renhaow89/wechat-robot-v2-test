@@ -17,21 +17,35 @@ CITY_NAME = "杭州"
 LOVE_DATE = date(2019, 3, 10)
 BIRTHDAY_LUNAR = (1998, 8, 18)
 
-HOLIDAY_MESSAGES = {
+# 重构：分离公历固态节日与农历动态节日
+HOLIDAY_SOLAR = {
     "01-01": "元旦",
     "02-14": "情人节",
     "03-08": "女神节",
-    "05-20": "520",
+    "05-01": "劳动节",
+    "05-20": "520表白日",
+    "06-01": "儿童节",
     "10-01": "国庆节",
+    "11-01": "万圣节",
+    "12-24": "平安夜",
     "12-25": "圣诞节",
     "12-31": "跨年"
+}
+
+# 格式：(农历月, 农历日): "节日名称"
+HOLIDAY_LUNAR = {
+    (1, 1): "春节",
+    (5, 5): "端午节",
+    (7, 7): "七夕节",
+    (8, 15): "中秋节",
+    (12, 8): "腊八节",
+    (12, 24): "南方小年"
 }
 
 # ==========================================
 # 基础时间与日期处理模块
 # ==========================================
 def get_beijing_today():
-    """修正 GitHub Actions UTC 偏差的绝对时间基准"""
     utc_now = datetime.utcnow()
     beijing_now = utc_now + timedelta(hours=8)
     return beijing_now.date()
@@ -40,7 +54,6 @@ def get_love_days():
     return (get_beijing_today() - LOVE_DATE).days
 
 def get_birthday_left():
-    """农历至公历的动态投射与剩余计算"""
     today = get_beijing_today()
     try:
         birthday = ZhDate(today.year, BIRTHDAY_LUNAR[1], BIRTHDAY_LUNAR[2]).to_datetime().date()
@@ -56,49 +69,111 @@ def get_birthday_left():
     return (birthday - today).days
 
 # ==========================================
-# 高阶业务逻辑计算引擎
+# 核心历法与天体测算引擎
 # ==========================================
-def get_dynamic_holiday_str(today, birthday_left, love_days):
-    """基于向量距离排序的下一节日测算算法"""
-    if birthday_left == 0:
-        return "今天是小胡胡的农历生日！🎂"
-    if love_days > 0 and love_days % 365 == 0:
-        return f"今天是恋爱 {love_days // 365} 周年纪念日！❤️"
-    
-    date_key = today.strftime("%m-%d")
-    if date_key in HOLIDAY_MESSAGES:
-        return f"今天是{HOLIDAY_MESSAGES[date_key]}快乐！❤️"
-        
-    candidates = {}
-    candidates["农历生日"] = birthday_left
-    
+def get_qingming_date(year):
+    """
+    基于 21 世纪太阳黄经算法计算清明节准确日期。
+    公式推导：[Y * D + C] - [Y / 4]，其中 Y=年份后两位，D=0.2422，C=4.81。
+    """
+    y = year % 100
+    day = int(y * 0.2422 + 4.81) - (y // 4)
+    return date(year, 4, day)
+
+def get_next_lunar_date(today, lunar_month, lunar_day):
+    """
+    跨年界定与农历转换引擎。自动探测农历日期是否在今年内逾期。
+    """
     try:
-        anni_this_year = date(today.year, LOVE_DATE.month, LOVE_DATE.day)
-    except ValueError:
-        anni_this_year = date(today.year, LOVE_DATE.month, LOVE_DATE.day - 1)
+        target_date = ZhDate(today.year, lunar_month, lunar_day).to_datetime().date()
+    except Exception:
+        # 防御性降级
+        target_date = date(today.year, 12, 31)
         
-    if anni_this_year > today:
-        candidates["恋爱纪念日"] = (anni_this_year - today).days
-    else:
-        candidates["恋爱纪念日"] = (date(today.year + 1, LOVE_DATE.month, LOVE_DATE.day) - today).days
+    if target_date < today:
+        try:
+            target_date = ZhDate(today.year + 1, lunar_month, lunar_day).to_datetime().date()
+        except Exception:
+            pass
+    return target_date
+
+def get_next_chuxi(today):
+    """
+    不规则节点（除夕）测算机制：基于下一年正月初一的前置一天剥离推算，免疫腊月 29/30 日数波动。
+    """
+    sf_this_year = ZhDate(today.year, 1, 1).to_datetime().date()
+    chuxi_this_year = sf_this_year - timedelta(days=1)
+    
+    if chuxi_this_year >= today:
+        return chuxi_this_year
         
-    for m_d, name in HOLIDAY_MESSAGES.items():
+    sf_next_year = ZhDate(today.year + 1, 1, 1).to_datetime().date()
+    return sf_next_year - timedelta(days=1)
+
+def get_dynamic_holiday_str(today, birthday_left, love_days):
+    """全局节日计算与竞态排序"""
+    
+    candidates = {}
+    
+    # --- 1. 数据源压入：公历固态节日 ---
+    for m_d, name in HOLIDAY_SOLAR.items():
         m, d = map(int, m_d.split("-"))
         try:
             h_date = date(today.year, m, d)
         except ValueError:
             continue
-            
-        if h_date > today:
+        if h_date >= today:
             candidates[name] = (h_date - today).days
         else:
             candidates[name] = (date(today.year + 1, m, d) - today).days
+
+    # --- 2. 数据源压入：星历计算节日（清明节） ---
+    qm_this_year = get_qingming_date(today.year)
+    if qm_this_year >= today:
+        candidates["清明节"] = (qm_this_year - today).days
+    else:
+        qm_next_year = get_qingming_date(today.year + 1)
+        candidates["清明节"] = (qm_next_year - today).days
+
+    # --- 3. 数据源压入：农历固态节日 ---
+    for (l_m, l_d), name in HOLIDAY_LUNAR.items():
+        h_date = get_next_lunar_date(today, l_m, l_d)
+        candidates[name] = (h_date - today).days
+
+    # --- 4. 数据源压入：除夕特殊计算 ---
+    chuxi_date = get_next_chuxi(today)
+    candidates["除夕"] = (chuxi_date - today).days
+
+    # --- 5. 数据源压入：恋爱纪念日 ---
+    try:
+        anni_this_year = date(today.year, LOVE_DATE.month, LOVE_DATE.day)
+    except ValueError:
+        anni_this_year = date(today.year, LOVE_DATE.month, LOVE_DATE.day - 1)
+        
+    if anni_this_year >= today:
+        candidates["恋爱纪念日"] = (anni_this_year - today).days
+    else:
+        candidates["恋爱纪念日"] = (date(today.year + 1, LOVE_DATE.month, LOVE_DATE.day) - today).days
+
+    # --- 逻辑截断：当日优先级拦截 ---
+    if birthday_left == 0:
+        return "今天是小胡胡的农历生日！🎂"
+    if candidates.get("恋爱纪念日") == 0:
+        return f"今天是恋爱 {love_days // 365} 周年纪念日！❤️"
+        
+    # 查询是否有其他节日在今天
+    for name, days_left in candidates.items():
+        if days_left == 0:
+            return f"今天是{name}快乐！❤️"
             
+    # --- 竞态排演：寻找全局最小距离 ---
     next_name, next_days = min(candidates.items(), key=lambda x: x[1])
     return f"下个节日【{next_name}】还有 {next_days} 天 ⏳"
 
+# ==========================================
+# 文本切片与极值预警计算引擎
+# ==========================================
 def get_segmented_weather_tips(weather_info):
-    """提取天气提示片段，通过内联 \n 在运行时撑开微信客户端排版边界"""
     weather_str = weather_info.get("weather", "")
     low_str = weather_info.get("low", "")
     high_str = weather_info.get("high", "")
@@ -129,7 +204,7 @@ def get_segmented_weather_tips(weather_info):
     return tip1, tip2, tip3
 
 # ==========================================
-# API 外部交互模块
+# 外部接口服务模块
 # ==========================================
 def get_access_token():
     url = f"https://api.weixin.qq.com/cgi-bin/token?grant_type=client_credential&appid={APP_ID}&secret={APP_SECRET}"
@@ -147,25 +222,23 @@ def get_weather():
     return {"weather": "多云", "low": "20℃", "high": "25℃"}
 
 def get_caihongpi():
-    """获取天行数据的彩虹屁，并进行脱敏与占位符清洗"""
     try:
         url = f"https://apis.tianapi.com/caihongpi/index?key={TIANAPI_KEY}"
         res = requests.get(url, timeout=10).json()
         if res.get("code") == 200:
             content = res["result"]["content"]
-            # 过滤清洗 API 附带的泛用型变量符
             return content.replace("XXX", "小胡胡")
     except Exception:
         pass
     return "今天也超级喜欢你！"
 
 # ==========================================
-# 主运行管道与载荷封装
+# 主运行管道与抽象语法树载荷封装
 # ==========================================
 def send_message():
     access_token = get_access_token()
     if not access_token:
-        print("❌ Token 获取中断")
+        print("❌ Token 获取阻断")
         return False
 
     weather = get_weather()
@@ -189,18 +262,16 @@ def send_message():
         "touser": OPEN_ID,
         "template_id": TEMPLATE_ID,
         "data": {
+            "top": {"value": "🌈 早安，我最爱的宝宝！\n", "color": "#FF69B4"},
             "d": {"value": today_str, "color": "#173177"},
             "c": {"value": CITY_NAME, "color": "#173177"},
             "w": {"value": weather["weather"], "color": "#173177"},
-            # 第一处视觉隔离：注入 \n 将基础信息区与纪念日区块拉开
             "t": {"value": f"{temp_str}\n", "color": "#FF0000"},
             "ld": {"value": str(love_days), "color": "#FF69B4"},
             "bl": {"value": str(birthday_left), "color": "#FF69B4"},
-            # 第二处视觉隔离：注入 \n 将纪念日区与专属提醒区块拉开
             "h": {"value": f"{holiday_str}\n", "color": "#FF8C00"},
             "t1": {"value": tip1, "color": "#008000"},
             "t2": {"value": tip2, "color": "#008000"},
-            # 第三处视觉隔离：注入 \n 将提醒区块与情话区块拉开
             "t3": {"value": f"{tip3}\n", "color": "#008000"},
             "q1": {"value": q1, "color": "#FF1493"},
             "q2": {"value": q2, "color": "#FF1493"},
