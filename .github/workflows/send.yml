@@ -2,7 +2,7 @@ name: V2测试早安推送
 
 on:
   schedule:
-    - cron: '37 23 * * *'
+    - cro: ' * * *'
   workflow_dispatch: 
 
 jobs:
